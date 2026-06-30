@@ -46,6 +46,9 @@ SIMPLE_TRACK_LINE = re.compile(rf"^(?P<name>.+):\s+(?P<status>{STATUSES})$")
 OVERALL_LINE = re.compile(r"(?P<done>\d+)/(?P<total>\d+)\s+complete", re.I)
 
 
+SPOTDL_EXECUTABLE_NAMES = ("spotdl.exe", "spotdl", "spotdl-4.5.0-win32.exe")
+
+
 def _spotdl_scripts_exe() -> Path | None:
     if sys.platform != "win32":
         return None
@@ -53,17 +56,42 @@ def _spotdl_scripts_exe() -> Path | None:
         Path(sys.executable).parent / "Scripts",
         Path(sys.executable).parent.parent / "Scripts",
     ):
-        for name in ("spotdl.exe", "spotdl"):
+        for name in SPOTDL_EXECUTABLE_NAMES:
             candidate = scripts / name
             if candidate.is_file():
                 return candidate
     return None
 
 
+def _spotdl_local_bin() -> str | None:
+    base_dir = Path(__file__).resolve().parent.parent
+    candidate_dirs = [base_dir / "bin"]
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        candidate_dirs.insert(0, Path(sys._MEIPASS) / "bin")
+
+    for directory in candidate_dirs:
+        for name in SPOTDL_EXECUTABLE_NAMES:
+            candidate = directory / name
+            if candidate.is_file():
+                return str(candidate)
+    return None
+
+
+def _spotdl_path() -> str | None:
+    local = _spotdl_local_bin()
+    if local:
+        return local
+    for name in SPOTDL_EXECUTABLE_NAMES:
+        candidate = shutil.which(name)
+        if candidate:
+            return candidate
+    return None
+
+
 def spotdl_available() -> bool:
     if _spotdl_scripts_exe():
         return True
-    if shutil.which("spotdl"):
+    if _spotdl_path():
         return True
     importlib.invalidate_caches()
     return importlib.util.find_spec("spotdl") is not None
@@ -73,7 +101,7 @@ def _spotdl_cmd_prefix() -> list[str]:
     bundled = _spotdl_scripts_exe()
     if bundled:
         return [str(bundled)]
-    exe = shutil.which("spotdl")
+    exe = _spotdl_path()
     if exe:
         return [exe]
     importlib.invalidate_caches()
